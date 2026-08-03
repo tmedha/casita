@@ -1822,11 +1822,13 @@ def render(
 </main>
 <footer><span class="footer-mark">Casita</span> · personal-use rental search</footer>
 </div>
+{SCROLL_TOP_HTML}
 {CAROUSEL_JS}
 {SEARCH_JS}
 {SHARE_JS}
 {VOTE_JS}
 {THEME_SWITCH_JS}
+{SCROLL_TOP_JS}
 </body>
 </html>
 """

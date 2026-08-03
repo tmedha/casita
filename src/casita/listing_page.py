@@ -26,6 +26,8 @@ from .html import (
     CAROUSEL_JS,
     CSS,
     PACIFIC,
+    SCROLL_TOP_HTML,
+    SCROLL_TOP_JS,
     SHARE_JS,
     THEME_PREPAINT,
     THEME_SWITCH_HTML,
@@ -646,10 +648,12 @@ def render_detail(L: Listing, conn: sqlite3.Connection, walk_map=None,
   {streetview_html}
   {source_link}
 </div>
+{SCROLL_TOP_HTML}
 {CAROUSEL_JS}
 {SHARE_JS}
 {VOTE_JS}
 {THEME_SWITCH_JS}
+{SCROLL_TOP_JS}
 </body>
 </html>
 """
