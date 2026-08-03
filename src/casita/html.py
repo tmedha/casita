@@ -423,6 +423,37 @@ THEME_SWITCH_JS = """<script>
 })();
 </script>"""
 
+SCROLL_TOP_HTML = (
+    '<button class="scroll-top" type="button" aria-label="Jump to top" title="Jump to top">'
+    '<span class="material-symbols-outlined">arrow_upward</span></button>'
+)
+
+SCROLL_TOP_JS = """<script>
+
+(function(){
+  var btn = document.querySelector('.scroll-top');
+  if (!btn) return;
+  var queued = false;
+  function sync() {
+    queued = false;
+    if (window.scrollY > window.innerHeight) btn.setAttribute('data-visible', 'true');
+    else btn.removeAttribute('data-visible');
+  }
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    window.requestAnimationFrame(sync);
+  }
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule, { passive: true });
+  btn.addEventListener('click', function(){
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  });
+  sync();
+})();
+</script>"""
+
 CSS = """
 :root {
   /* Light — warm paper, forest green, clay warmth. Editorial. */
@@ -681,7 +712,6 @@ h1 {
   flex-shrink: 0;
 }
 
-/* Floating jump-to-top; hidden until the page scrolls past one screen. */
 .scroll-top {
   position: fixed;
   left: calc(24px + env(safe-area-inset-left));
