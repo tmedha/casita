@@ -681,6 +681,46 @@ h1 {
   flex-shrink: 0;
 }
 
+/* Floating jump-to-top; hidden until the page scrolls past one screen. */
+.scroll-top {
+  position: fixed;
+  left: calc(24px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: var(--card);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  box-shadow: 0 4px 14px var(--shadow-2);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateY(6px);
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+              opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+.scroll-top[data-visible="true"] {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: none;
+}
+.scroll-top:hover { color: var(--accent); border-color: var(--accent); }
+.scroll-top .material-symbols-outlined { font-size: 20px; vertical-align: 0; }
+@media (max-width: 600px) {
+  .scroll-top {
+    left: calc(16px + env(safe-area-inset-left));
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-top {
+    transform: none;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  }
+}
+
 /* —— grid —— */
 .grid {
   display: grid;
