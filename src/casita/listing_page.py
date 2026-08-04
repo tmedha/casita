@@ -21,11 +21,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from . import dogs
+from . import dogs, storage
 from .html import (
     CAROUSEL_JS,
     CSS,
     PACIFIC,
+    STALE_AFTER_DAYS,
     SCROLL_TOP_HTML,
     SCROLL_TOP_JS,
     SHARE_JS,
@@ -37,6 +38,9 @@ from .html import (
     _clean_address_for_maps,
     _esc,
     _gcal_link,
+    days_listed,
+    money,
+    price_change_html,
     public_url,
     _walk_class,
 )
@@ -252,7 +256,11 @@ def _render_kv(L: Listing, walk_map, drive_map, drive_bakery) -> str:
         return f'<div class="row"><span class="k">{_esc(k)}</span><span class="{klass}">{v}</span></div>'
 
     if L.price:
-        rows.append(row("price", f"${L.price:,}/mo"))
+        rows.append(row("price", f"{money(L.price)}/mo"))
+    days = days_listed(L)
+    if days is not None:
+        rows.append(row("days listed", f"{days}",
+                        "v caution" if days >= STALE_AFTER_DAYS else "v"))
     bb = []
     if L.beds: bb.append(f"{L.beds:g} bd")
     if L.baths: bb.append(f"{L.baths:g} ba")
@@ -398,6 +406,29 @@ def _render_thread(conn: sqlite3.Connection, listing_key: str) -> str:
     return f'<div class="thread">{"".join(parts)}</div>'
 
 
+def _render_price_history(conn: sqlite3.Connection, listing_key: str) -> str:
+    """Every asking price we've observed, oldest first.
+
+    Only worth a section once there's a second observation — a single opening
+    price is already shown in Facts.
+    """
+    rows = storage.price_history_for(conn, listing_key)
+    if len(rows) < 2:
+        return ""
+    parts: list[str] = []
+    for r in rows:
+        try:
+            dt = datetime.fromisoformat(str(r["ts"])).replace(tzinfo=timezone.utc)
+            when = dt.astimezone(PACIFIC).strftime("%b %-d, %Y")
+        except Exception:
+            when = str(r["ts"])
+        parts.append(
+            f'<div class="row"><span class="k">{_esc(when)}</span>'
+            f'<span class="v">{money(r["price"])}/mo {price_change_html(r)}</span></div>'
+        )
+    return f'<div class="detail-kv">{"".join(parts)}</div>'
+
+
 def _render_attachments(conn: sqlite3.Connection, listing_key: str) -> str:
     rows = conn.execute(
         "SELECT filename, kind, caption FROM attachments WHERE listing_key=? ORDER BY ts",
@@ -541,6 +572,12 @@ def render_detail(L: Listing, conn: sqlite3.Connection, walk_map=None,
         f'</div>'
     )
 
+    price_history = _render_price_history(conn, L.key)
+    price_history_html = (
+        f'<div class="detail-section"><h2>Price history</h2>{price_history}</div>'
+        if price_history else ""
+    )
+
     source_link = ""
     # Primary source first, then every duplicate found via cross-source dedup.
     # `also_on` is populated by dedup.deduplicate_db when this listing absorbed
@@ -643,6 +680,7 @@ def render_detail(L: Listing, conn: sqlite3.Connection, walk_map=None,
   {vote_bar_html}
   {vibe_html}
   {facts_html}
+  {price_history_html}
   {thread_html}
   {shots_html}
   {streetview_html}

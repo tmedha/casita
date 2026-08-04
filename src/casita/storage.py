@@ -172,6 +172,25 @@ CREATE TABLE IF NOT EXISTS actions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_actions_listing ON actions (listing_key, ts);
+
+-- Append-only log of observed asking prices. Rental portals show a snapshot
+-- and throw the history away, so a unit that has sat for a month at a cut
+-- price looks identical to one listed yesterday. We already re-scrape every
+-- run, so diffing the incoming price against the stored one recovers that
+-- history for free — and a drop is negotiating leverage worth seeing.
+--
+-- One row per *observation that differs*: the first row for a listing is its
+-- opening price (prev_price NULL), each later row records a move. A scrape
+-- that repeats the current price writes nothing.
+CREATE TABLE IF NOT EXISTS price_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_key TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  prev_price INTEGER,            -- null on the first observation
+  ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_price_history_listing ON price_history (listing_key, ts);
 """
 
 COLUMNS = [
@@ -319,7 +338,42 @@ def _row_to_listing(row: sqlite3.Row) -> Listing:
         share_blurb=row["share_blurb"],
         share_token=row["share_token"],
         first_seen=row["first_seen"] if "first_seen" in row.keys() else None,
+        last_seen=row["last_seen"] if "last_seen" in row.keys() else None,
     )
+
+
+def record_price(
+    conn, listing_key: str, price: int, prev_price: int | None = None,
+    ts: datetime | None = None,
+) -> None:
+    """Append one price observation. Callers decide what counts as a change."""
+    conn.execute(
+        "INSERT INTO price_history (listing_key, price, prev_price, ts) "
+        "VALUES (?, ?, ?, ?)",
+        (listing_key, price, prev_price, ts or datetime.utcnow()),
+    )
+
+
+def price_history_for(conn: sqlite3.Connection, listing_key: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM price_history WHERE listing_key = ? ORDER BY ts", (listing_key,)
+    ).fetchall()
+
+
+def price_changes(conn) -> dict[str, sqlite3.Row]:
+    """Latest *change* per listing — the row behind the price-drop badge.
+
+    Opening observations (prev_price IS NULL) are excluded: a listing we have
+    only ever seen at one price hasn't moved. Keyed by listing_key so the
+    renderer can slice it per card, like convo_map.
+    """
+    rows = conn.execute(
+        "SELECT h.* FROM price_history h "
+        "JOIN (SELECT listing_key, MAX(id) AS mid FROM price_history "
+        "      WHERE prev_price IS NOT NULL GROUP BY listing_key) m "
+        "  ON m.mid = h.id"
+    ).fetchall()
+    return {r["listing_key"]: r for r in rows}
 
 
 def upsert_run(
@@ -341,8 +395,15 @@ def upsert_run(
     for L in listings:
         row = _listing_to_row(L)
         existing = conn.execute(
-            "SELECT key FROM listings WHERE key = ?", (L.key,)
+            "SELECT key, price FROM listings WHERE key = ?", (L.key,)
         ).fetchone()
+        # Log the price *before* the UPDATE overwrites it. A scrape with no
+        # price coalesces to the stored value below, so treat None as "no
+        # observation" rather than a change to nothing.
+        if row["price"] is not None:
+            prev_price = existing["price"] if existing else None
+            if prev_price != row["price"]:
+                record_price(conn, L.key, row["price"], prev_price, ts=now)
         if existing:
             # Coalesce: only overwrite each column when the new scrape has a
             # non-null value. Protects manually-corrected fields (e.g. an

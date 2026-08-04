@@ -178,6 +178,12 @@ def deduplicate_db(conn) -> int:
                 "UPDATE attachments SET listing_key=? WHERE listing_key=?",
                 (primary.key, sec.key),
             )
+            # Keep the secondary's price observations — the duplicate may well
+            # be the source that watched the unit longest.
+            conn.execute(
+                "UPDATE price_history SET listing_key=? WHERE listing_key=?",
+                (primary.key, sec.key),
+            )
             conn.execute("UPDATE listings SET active=0 WHERE key=?", (sec.key,))
             deactivated += 1
         prim_raw["also_on"] = also_on

@@ -225,7 +225,13 @@ def ingest(address: str | None, key: str | None, direction: str, channel: str,
         # Apply updates onto the listing.
         if update and listing_key:
             fields = {}
-            if update.price: fields["price"] = update.price
+            if update.price:
+                # A landlord quoting a different number is a price change like
+                # any other — log it so the history isn't only scrape-derived.
+                prior_price = _get_field(conn, listing_key, "price")
+                if prior_price != update.price:
+                    storage.record_price(conn, listing_key, update.price, prior_price)
+                fields["price"] = update.price
             if update.beds: fields["beds"] = update.beds
             if update.baths: fields["baths"] = update.baths
             if update.parking and not _get_field(conn, listing_key, "parking"):
@@ -1069,6 +1075,7 @@ def _render_site(filename: str, output_dir: Path) -> dict[str, int | Path]:
             if storage.conversation_state(conn, L.key) is not None
         }
         bookmark_keys = storage.bookmarked_keys(conn)
+        price_change_map = storage.price_changes(conn)
     if not listings:
         console.print("[red]no listings in DB — run `casita search` first[/red]")
         out_html = output_dir / filename
@@ -1095,7 +1102,7 @@ def _render_site(filename: str, output_dir: Path) -> dict[str, int | Path]:
     out_html.write_text(html.render(
         listings, run=run, walk_map=walk_map, convo_map=convo_map,
         drive_bakery_map=drive_bakery_map, drive_map=drive_map,
-        bookmark_keys=bookmark_keys,
+        bookmark_keys=bookmark_keys, price_change_map=price_change_map,
     ))
 
     # Per-listing detail pages — one file per active listing under tmp/listing/.
@@ -1140,6 +1147,7 @@ def _render_site(filename: str, output_dir: Path) -> dict[str, int | Path]:
         "bakery_drives": len(drive_bakery_map),
         "details": detail_count,
         "og_images": og_count,
+        "price_changes": len(price_change_map),
     }
 
 

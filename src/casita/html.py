@@ -1011,6 +1011,14 @@ h1 {
   line-height: 1;
 }
 .card-stats { color: var(--ink-2); font-size: 13px; font-weight: 500; letter-spacing: 0.01em; }
+/* price move next to the asking price — a cut is the one worth chasing */
+.price-change {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+  padding: 3px 8px; border-radius: 999px;
+}
+.price-change.is-drop { color: var(--accent); background: var(--accent-soft); }
+.price-change.is-rise { color: var(--ink-3); background: var(--card-2); }
 .card-address {
   font-size: 14px; color: var(--ink); line-height: 1.4; font-weight: 500;
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
@@ -1024,6 +1032,7 @@ h1 {
   padding: 4px 9px; border-radius: 999px;
   background: var(--card-2); color: var(--ink-2); border: 1px solid var(--line);
 }
+.chip-tag.is-stale { color: var(--clay); background: var(--clay-soft); border-color: transparent; }
 .chip-dog-large_ok, .chip-dog-dogs_ok { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
 .chip-dog-small_only { color: var(--caution); background: var(--caution-soft); border-color: transparent; }
 .chip-dog-no_dogs    { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
@@ -1579,9 +1588,61 @@ def _amenity_chips(L: Listing) -> list[str]:
     return chips[:3]
 
 
+def money(n: int | float | None) -> str:
+    """`$5,200`. Shared with the detail page so prices read the same everywhere."""
+    return f"${n:,.0f}" if n is not None else ""
+
+
+def days_listed(L: Listing) -> int | None:
+    """Days we watched this listing stay on the market: first_seen → last_seen.
+
+    Not days on the portal — we only know what we've seen — but a unit still
+    up weeks after we found it is the one where asking is worth it.
+
+    Measured against `last_seen` rather than today so the number reflects the
+    search that produced it. Rendering an archived DB months later shouldn't
+    turn every listing into a stale one.
+    """
+    if not L.first_seen:
+        return None
+    return max(0, ((L.last_seen or L.first_seen) - L.first_seen).days)
+
+
+# Below this, "31 days listed" is just noise — everything is new early on.
+STALE_AFTER_DAYS = 21
+
+
+def price_change_html(change) -> str:
+    """`↓ $250` pill from a price_history row, or "" when there's no change.
+
+    A cut is good news for us (green); a raise is worth noticing, not alarming
+    (muted). Row may be a sqlite3.Row or any mapping with price/prev_price.
+    """
+    if not change:
+        return ""
+    price, prev = change["price"], change["prev_price"]
+    if prev is None or price is None or price == prev:
+        return ""
+    delta = price - prev
+    arrow, kind = ("↓", "drop") if delta < 0 else ("↑", "rise")
+    return (
+        f'<span class="price-change is-{kind}" '
+        f'title="was {money(prev)}/mo">{arrow} {money(abs(delta))}</span>'
+    )
+
+
+def days_listed_chip(L: Listing) -> str:
+    """`31 days listed` chip — only once sitting means something."""
+    days = days_listed(L)
+    if days is None or days < STALE_AFTER_DAYS:
+        return ""
+    return f'<span class="chip-tag is-stale">{days} days listed</span>'
+
+
 def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
           drive_bakery: tuple | None = None, drive_map: dict | None = None,
-          feature: bool = False, bookmarked: bool = False) -> str:
+          feature: bool = False, bookmarked: bool = False,
+          price_change=None) -> str:
     """Card surface — editorial listing card:
        Photo (carousel) · source + dog overlays · neighborhood + fit verdict ·
        price + size · address · Gemini take · amenity + conversation chips.
@@ -1634,7 +1695,8 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
             f'<div class="no-img">no photo</div>{badge}{dog_badge}</a>'
         )
 
-    price = f"${L.price:,}/mo" if L.price else "price on request"
+    price = f"{money(L.price)}/mo" if L.price else "price on request"
+    price_change_pill = price_change_html(price_change)
     stats = []
     if L.beds: stats.append(f"{L.beds:g} bd")
     if L.baths: stats.append(f"{L.baths:g} ba")
@@ -1691,9 +1753,12 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
     amenity_html = "".join(
         f'<span class="chip-tag">{_esc(a)}</span>' for a in _amenity_chips(L)
     )
+    stale_chip = days_listed_chip(L)
     tags_html = ""
-    if convo_pill or amenity_html:
-        tags_html = f'<div class="card-tags">{convo_pill}{amenity_html}</div>'
+    if convo_pill or amenity_html or stale_chip:
+        tags_html = (
+            f'<div class="card-tags">{convo_pill}{amenity_html}{stale_chip}</div>'
+        )
 
     address_line = ""
     if L.address:
@@ -1742,6 +1807,7 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
       {eyebrow_html}
       <div class="card-price-row">
         <span class="card-price">{price}</span>
+        {price_change_pill}
         <span class="card-stats">{_esc(stat_line)}</span>
       </div>
       {address_line}
@@ -1823,12 +1889,14 @@ def render(
     drive_bakery_map: dict | None = None,
     drive_map: dict | None = None,
     bookmark_keys: set[str] | None = None,
+    price_change_map: dict | None = None,
     title: str = "Casita",
 ) -> str:
     convo_map = convo_map or {}
     drive_bakery_map = drive_bakery_map or {}
     drive_map = drive_map or {}
     bookmark_keys = bookmark_keys or set()
+    price_change_map = price_change_map or {}
 
     # Pick the feature card — the top-ranked strong fit that isn't eliminated.
     # rank() already sorts best-first, so the first qualifying listing wins.
@@ -1844,7 +1912,8 @@ def render(
         _card(L, walk_map=walk_map, convo=convo_map.get(L.key),
               drive_bakery=drive_bakery_map.get(L.key),
               drive_map=drive_map, feature=(L.key == feature_key),
-              bookmarked=(L.key in bookmark_keys))
+              bookmarked=(L.key in bookmark_keys),
+              price_change=price_change_map.get(L.key))
         for L in listings
     )
     ts_raw = (run["finished_at"] or run["started_at"]) if run else datetime.utcnow().isoformat()
@@ -1881,6 +1950,14 @@ def render(
         stat_parts.append(stat_item(in_convo, "in conversation", "is-clay"))
     if viewings:
         stat_parts.append(stat_item(viewings, "viewing" + ("s" if viewings != 1 else "")))
+    drops = sum(
+        1 for L in listings
+        if (c := price_change_map.get(L.key)) and c["prev_price"]
+        and c["price"] < c["prev_price"]
+    )
+    if drops:
+        stat_parts.append(stat_item(drops, "price drop" + ("s" if drops != 1 else ""),
+                                    "is-accent"))
     stats_html = '<div class="stats">' + '<span class="stat-sep"></span>'.join(stat_parts) + '</div>'
 
     sub = f"{count} places · ranked for large dogs, trails, beaches, and a good loaf"
