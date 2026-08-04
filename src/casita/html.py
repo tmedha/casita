@@ -1733,7 +1733,7 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
     bookmark_pressed = "true" if bookmarked else "false"
 
     return f"""
-<article class="card {sev_class}{elim_class}{feature_class}" data-search="{haystack}" data-added="{added_date}" data-key="{_esc(L.key)}" data-price="{L.price or ''}">
+<article class="card {sev_class}{elim_class}{feature_class}" data-search="{haystack}" data-added="{added_date}" data-key="{_esc(L.key)}" data-price="{L.price or ''}" data-bookmarked="{bookmark_pressed}">
   {elim_banner_html}
   <div class="feature-media">{img_html}</div>
   <a class="card-body-link" href="{detail_href}">
