@@ -131,6 +131,7 @@ SEARCH_JS = """<script>
   var chips = Array.from(document.querySelectorAll('.since-chip'));
   var dateInput = document.getElementById('since-date');
   var sortSelect = document.getElementById('sort-select');
+  var bookmarkChip = document.getElementById('bookmark-filter');
   var grid = document.querySelector('main.grid');
   var featureCard = document.querySelector('.card.feature');
   if (!input) return;
@@ -147,6 +148,7 @@ SEARCH_JS = """<script>
   var sinceCutoff = '';
   var activeDays = '';
   var sortMode = '';  // '' = best match, 'asc'/'desc' = price
+  var bookmarkOnly = false;
   var DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;
 
   function daysAgoISO(n) {
@@ -160,6 +162,7 @@ SEARCH_JS = """<script>
     if (q) parts.push('q=' + encodeURIComponent(q));
     if (sinceCutoff) parts.push('since=' + sinceCutoff);
     if (sortMode) parts.push('sort=' + sortMode);
+    if (bookmarkOnly) parts.push('bookmarked=1');
     var hash = parts.length ? '#' + parts.join('&') : '';
     if (location.hash !== hash) {
       history.replaceState(null, '', location.pathname + location.search + hash);
@@ -169,6 +172,7 @@ SEARCH_JS = """<script>
   function apply() {
     var q = (input.value || '').trim().toLowerCase();
     var tokens = q ? q.split(/\\s+/).filter(Boolean) : [];
+    var bookmarks = JSON.parse(localStorage.getItem('casita_bookmarks_v1') || '{}');
     var shown = 0;
     cards.forEach(function(c) {
       var hay = c.dataset.search || '';
@@ -176,7 +180,10 @@ SEARCH_JS = """<script>
       var added = c.dataset.added || '';
       // No cutoff → show all; with a cutoff, an unknown date is treated as old.
       var dateMatch = !sinceCutoff || (added && added >= sinceCutoff);
-      var match = textMatch && dateMatch;
+      var localBookmark = bookmarks[c.dataset.key];
+      var isBookmarked = localBookmark === undefined ? c.dataset.bookmarked === 'true' : !!localBookmark;
+      var bookmarkMatch = !bookmarkOnly || isBookmarked;
+      var match = textMatch && dateMatch && bookmarkMatch;
       c.style.display = match ? '' : 'none';
       if (match) shown++;
     });
@@ -221,6 +228,7 @@ SEARCH_JS = """<script>
       else if (!sinceCutoff) dateInput.value = '';
     }
     if (sortSelect) sortSelect.value = sortMode;
+    if (bookmarkChip) bookmarkChip.setAttribute('aria-pressed', bookmarkOnly ? 'true' : 'false');
   }
 
   chips.forEach(function(ch) {
@@ -248,6 +256,13 @@ SEARCH_JS = """<script>
       syncHash((input.value || '').trim().toLowerCase());
     });
   }
+  if (bookmarkChip) {
+    bookmarkChip.addEventListener('click', function() {
+      bookmarkOnly = !bookmarkOnly;
+      paintControls();
+      apply();
+    });
+  }
 
   input.addEventListener('input', apply);
 
@@ -264,6 +279,7 @@ SEARCH_JS = """<script>
       var s = decodeURIComponent(kv[1]);
       if (s === 'asc' || s === 'desc') sortMode = s;
     }
+    if (kv[0] === 'bookmarked' && kv[1] === '1') bookmarkOnly = true;
   });
   // A restored cutoff is treated as a custom date unless it matches a preset.
   if (sinceCutoff) {
@@ -304,31 +320,60 @@ SHARE_JS = """<script>
 </script>"""
 
 
-# Votes are browser-local: stored in localStorage keyed by listing key.
-# Each vote captures {vote: 'up'|'pass', reason: '...', ts: ISO}. The reason is
-# the load-bearing part — it's what we feed back to Gemini as multi-shot
-# examples to improve future ranking.
+# Votes and bookmarks are browser-local: stored in localStorage keyed by
+# listing key. Each vote captures {vote: 'up'|'pass', reason: '...', ts: ISO};
+# the reason is what we feed back to Gemini as multi-shot examples. Bookmarks
+# are just {ts: ISO} — a save-for-later flag, distinct from the up/pass verdict.
 # Elimination is server-side (via listing_status), not done from the browser.
 # Export is a shareable URL (#v=base64-JSON) sent via the native share sheet,
-# so it works from a phone — clipboard is the fallback for desktop.
+# so it works from a phone — clipboard is the fallback for desktop. Pasting it
+# to an agent lets `casita vote` / `casita bookmark` persist the signal to SQLite.
 VOTE_JS = """<script>
 (function() {
   const KEY = 'casita_votes_v1';
+  const BOOKMARK_KEY = 'casita_bookmarks_v1';
   // Migrate old "string vote" entries → {vote, reason, ts} shape.
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
   const votes = {};
   for (const [k, v] of Object.entries(raw)) {
     votes[k] = typeof v === 'string' ? { vote: v, reason: '', ts: '' } : v;
   }
+  const bookmarks = JSON.parse(localStorage.getItem(BOOKMARK_KEY) || '{}');
   const save = () => localStorage.setItem(KEY, JSON.stringify(votes));
+  const saveBookmarks = () => localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarks));
 
-  // Encode votes into a shareable URL fragment. base64(JSON), stripped padding.
+  // Encode votes + bookmarks into a shareable URL fragment. base64(JSON), stripped padding.
   function shareUrl() {
-    const payload = JSON.stringify({ v: 1, votes: votes, ts: new Date().toISOString() });
+    const payload = JSON.stringify({ v: 1, votes: votes, bookmarks: bookmarks, ts: new Date().toISOString() });
     const b64 = btoa(unescape(encodeURIComponent(payload)))
       .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
     return location.origin + '/#v=' + b64;
   }
+
+  // Bookmark buttons on each card. bookmarks[key] is tri-state: undefined
+  // defers to the server-rendered data-bookmarked (from the SQL bookmarks
+  // table), an object means locally bookmarked, null means locally
+  // un-bookmarked (overriding a server default of true).
+  document.querySelectorAll('.card[data-key] .bookmark-btn').forEach(btn => {
+    const card = btn.closest('.card');
+    const key = card && card.dataset.key;
+    if (!key) return;
+    const serverOn = btn.dataset.bookmarked === 'true';
+    const isOn = () => bookmarks[key] === undefined ? serverOn : !!bookmarks[key];
+    const paint = () => {
+      const on = isOn();
+      btn.dataset.bookmarked = on ? 'true' : 'false';
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    paint();
+    btn.addEventListener('click', () => {
+      bookmarks[key] = isOn() ? null : { ts: new Date().toISOString() };
+      saveBookmarks();
+      paint();
+      const q = document.getElementById('q');
+      if (q) q.dispatchEvent(new Event('input'));
+    });
+  });
 
   // Apply persisted votes on load: dim pass'd cards, highlight up'd cards,
   // and move pass'd cards to the bottom of the grid (above eliminated).
@@ -358,9 +403,9 @@ VOTE_JS = """<script>
     const label = exportBtn.querySelector('.export-btn-label');
     const setLabel = (s) => { if (label) label.textContent = s; };
     exportBtn.addEventListener('click', async () => {
-      const count = Object.keys(votes).length;
+      const count = Object.keys(votes).length + Object.keys(bookmarks).length;
       if (!count) {
-        setLabel('no votes yet');
+        setLabel('nothing to export');
         setTimeout(() => setLabel('export votes'), 1500);
         return;
       }
@@ -871,6 +916,21 @@ h1 {
 }
 .card-vote-badge[data-vote="up"]   { background: var(--accent); color: #fff; }
 .card-vote-badge[data-vote="pass"] { background: var(--backdrop); color: #fff; }
+.bookmark-btn {
+  position: absolute; right: 16px; bottom: 16px; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: var(--card); color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 999px;
+  cursor: pointer; padding: 0;
+  box-shadow: 0 1px 2px var(--shadow);
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.bookmark-btn:hover { color: var(--accent); border-color: var(--accent); }
+.bookmark-btn .material-symbols-outlined { font-size: 17px; vertical-align: 0; }
+.bookmark-btn[data-bookmarked="true"] {
+  color: #fff; background: var(--accent); border-color: transparent;
+}
 .export-btn {
   background: var(--card); border: 1px solid var(--line); color: var(--ink-2);
   font: inherit; font-size: 12px; font-weight: 600;
@@ -1084,7 +1144,7 @@ h1 {
 
 /* —— body —— */
 .body {
-  padding: 18px 18px 20px;
+  padding: 18px 18px 46px;
   display: flex; flex-direction: column;
   gap: 11px; flex: 1;
 }
@@ -1521,7 +1581,7 @@ def _amenity_chips(L: Listing) -> list[str]:
 
 def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
           drive_bakery: tuple | None = None, drive_map: dict | None = None,
-          feature: bool = False) -> str:
+          feature: bool = False, bookmarked: bool = False) -> str:
     """Card surface — editorial listing card:
        Photo (carousel) · source + dog overlays · neighborhood + fit verdict ·
        price + size · address · Gemini take · amenity + conversation chips.
@@ -1669,6 +1729,9 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
             f'<div class="card-fallback-title">{_esc(L.title or L.address or "View listing")}</div>'
         )
 
+    # Sibling of .card-body-link, not nested in it — a <button> inside that <a> would be invalid.
+    bookmark_pressed = "true" if bookmarked else "false"
+
     return f"""
 <article class="card {sev_class}{elim_class}{feature_class}" data-search="{haystack}" data-added="{added_date}" data-key="{_esc(L.key)}" data-price="{L.price or ''}">
   {elim_banner_html}
@@ -1687,6 +1750,9 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
       {tags_html}
     </div>
   </a>
+  <button type="button" class="bookmark-btn" data-bookmarked="{bookmark_pressed}" aria-pressed="{bookmark_pressed}" aria-label="Bookmark this listing" title="Bookmark">
+    <span class="material-symbols-outlined">bookmark</span>
+  </button>
 </article>
 """
 
@@ -1756,11 +1822,13 @@ def render(
     convo_map: dict[str, dict] | None = None,
     drive_bakery_map: dict | None = None,
     drive_map: dict | None = None,
+    bookmark_keys: set[str] | None = None,
     title: str = "Casita",
 ) -> str:
     convo_map = convo_map or {}
     drive_bakery_map = drive_bakery_map or {}
     drive_map = drive_map or {}
+    bookmark_keys = bookmark_keys or set()
 
     # Pick the feature card — the top-ranked strong fit that isn't eliminated.
     # rank() already sorts best-first, so the first qualifying listing wins.
@@ -1775,7 +1843,8 @@ def render(
     cards = "\n".join(
         _card(L, walk_map=walk_map, convo=convo_map.get(L.key),
               drive_bakery=drive_bakery_map.get(L.key),
-              drive_map=drive_map, feature=(L.key == feature_key))
+              drive_map=drive_map, feature=(L.key == feature_key),
+              bookmarked=(L.key in bookmark_keys))
         for L in listings
     )
     ts_raw = (run["finished_at"] or run["started_at"]) if run else datetime.utcnow().isoformat()
@@ -1831,7 +1900,7 @@ def render(
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&display=swap">
-<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined&icon_names=arrow_upward,arrow_downward,arrow_outward,arrow_back,ios_share,cancel,auto_awesome&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined&icon_names=arrow_upward,arrow_downward,arrow_outward,arrow_back,ios_share,cancel,auto_awesome,bookmark&display=block">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{title} — rental search demo">
 <meta property="og:description" content="{sub}">
@@ -1855,7 +1924,7 @@ def render(
       <span class="tagline">rental search demo</span>
     </div>
     <div class="header-actions">
-      <button id="export-votes" class="export-btn" type="button" title="share all up/pass votes as a link — paste to Claude to incorporate"><span class="material-symbols-outlined">ios_share</span><span class="export-btn-label">export votes</span></button>
+      <button id="export-votes" class="export-btn" type="button" title="share all up/pass votes and bookmarks as a link — paste to Claude to incorporate"><span class="material-symbols-outlined">ios_share</span><span class="export-btn-label">export votes</span></button>
       {THEME_SWITCH_HTML}
     </div>
   </div>
@@ -1868,6 +1937,7 @@ def render(
         <input id="q" type="search" placeholder="Search hood, price, beds, “garage”, “Inner Richmond”…" autocomplete="off">
       </div>
       <div class="sort-group">
+        <button type="button" id="bookmark-filter" class="since-chip" aria-pressed="false"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;">bookmark</span> Bookmarked</button>
         <label class="since-label" for="sort-select">Sort</label>
         <select id="sort-select" class="sort-select" aria-label="Sort listings">
           <option value="">Best match</option>

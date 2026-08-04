@@ -1068,6 +1068,7 @@ def _render_site(filename: str, output_dir: Path) -> dict[str, int | Path]:
             for L in listings
             if storage.conversation_state(conn, L.key) is not None
         }
+        bookmark_keys = storage.bookmarked_keys(conn)
     if not listings:
         console.print("[red]no listings in DB — run `casita search` first[/red]")
         out_html = output_dir / filename
@@ -1094,6 +1095,7 @@ def _render_site(filename: str, output_dir: Path) -> dict[str, int | Path]:
     out_html.write_text(html.render(
         listings, run=run, walk_map=walk_map, convo_map=convo_map,
         drive_bakery_map=drive_bakery_map, drive_map=drive_map,
+        bookmark_keys=bookmark_keys,
     ))
 
     # Per-listing detail pages — one file per active listing under tmp/listing/.
@@ -1402,6 +1404,34 @@ def eliminate(listing: str, kind: str, note: str | None, voter: str, local: bool
     console.print(f"[green]eliminated[/green] {key} as {kind}")
 
 
+@cli.command()
+@click.option("--listing", required=True)
+@click.option("--remove", is_flag=True, help="Un-bookmark instead of bookmark.")
+@click.option("--voter", default="reviewer_b", type=click.Choice(VOTERS))
+@click.option("--local", is_flag=True)
+def bookmark(listing: str, remove: bool, voter: str, local: bool):
+    """Save (or remove) a listing for later."""
+    with _cloud_or_local(local):
+        with storage.connect() as conn:
+            key = _lookup_listing_key(conn, listing)
+            if not key:
+                console.print(f"[red]no listing matches:[/red] {listing}")
+                raise SystemExit(1)
+            if remove:
+                conn.execute(
+                    "DELETE FROM bookmarks WHERE listing_key=? AND voter=?", (key, voter)
+                )
+            else:
+                conn.execute(
+                    "INSERT OR IGNORE INTO bookmarks (listing_key, voter) VALUES (?, ?)",
+                    (key, voter),
+                )
+            _record_action(conn, listing_key=key, voter=voter, kind="bookmark",
+                           payload={"remove": remove})
+            conn.commit()
+    console.print(f"[green]{'unbookmarked' if remove else 'bookmarked'}[/green] {key} by {voter}")
+
+
 @cli.command(name="note")
 @click.option("--listing", required=True)
 @click.option("--body", required=True)
@@ -1482,6 +1512,16 @@ def undo(listing: str, voter: str, local: bool):
             elif kind == "note":
                 conn.execute("DELETE FROM interactions WHERE id=?",
                              (payload["interaction_id"],))
+            elif kind == "bookmark":
+                if payload.get("remove"):
+                    conn.execute(
+                        "INSERT OR IGNORE INTO bookmarks (listing_key, voter) VALUES (?, ?)",
+                        (key, voter),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM bookmarks WHERE listing_key=? AND voter=?", (key, voter)
+                    )
             else:
                 console.print(f"[red]can't undo kind={kind}[/red]")
                 raise SystemExit(1)
