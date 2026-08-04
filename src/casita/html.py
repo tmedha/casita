@@ -266,8 +266,55 @@ SEARCH_JS = """<script>
 
   input.addEventListener('input', apply);
 
+  // A detail page is a separate document, so coming back is a fresh load that
+  // lands at the top. Re-anchor to the card we left from — a card survives
+  // lazy images and a changed filter set; a pixel offset doesn't.
+  var NAV_KEY = 'casita_index_nav_v1';
+
+  function anchorCard() {
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      if (c.style.display === 'none') continue;
+      var r = c.getBoundingClientRect();
+      if (r.bottom > 0) return { key: c.dataset.key || '', top: r.top };
+    }
+    return null;
+  }
+
+  function readNav() {
+    try { return JSON.parse(sessionStorage.getItem(NAV_KEY) || 'null'); }
+    catch (e) { return null; }
+  }
+
+  window.addEventListener('pagehide', function() {
+    var a = anchorCard();
+    try {
+      sessionStorage.setItem(NAV_KEY, JSON.stringify({
+        hash: location.hash.replace(/^#/, ''),
+        y: window.scrollY,
+        key: a ? a.key : '',
+        top: a ? a.top : 0
+      }));
+    } catch (e) {}
+  });
+
+  function restoreScroll(nav) {
+    if (!nav) return;
+    var card = nav.key && grid
+      ? grid.querySelector('.card[data-key="' + (window.CSS && CSS.escape ? CSS.escape(nav.key) : nav.key) + '"]')
+      : null;
+    if (card && card.style.display !== 'none') {
+      window.scrollTo(0, window.scrollY + card.getBoundingClientRect().top - nav.top);
+    } else if (nav.y) {
+      window.scrollTo(0, nav.y);
+    }
+  }
+
   // Restore filters from the URL hash on load (#q=...&since=YYYY-MM-DD&sort=asc).
+  // The back link carries no hash, so fall back to the state saved on exit.
+  var nav = readNav();
   var raw = location.hash.replace(/^#/, '');
+  if (!raw && nav && nav.hash) raw = nav.hash;
   raw.split('&').forEach(function(pair) {
     var kv = pair.split('=');
     if (kv[0] === 'q' && kv[1]) input.value = decodeURIComponent(kv[1].replace(/\\+/g, '%20'));
@@ -291,6 +338,7 @@ SEARCH_JS = """<script>
   paintControls();
   apply();
   applySort();
+  restoreScroll(nav);
 })();
 </script>"""
 
