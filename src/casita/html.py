@@ -786,7 +786,7 @@ h1 {
 .scroll-top .material-symbols-outlined { font-size: 20px; vertical-align: 0; }
 @media (max-width: 600px) {
   .scroll-top {
-    left: calc(16px + env(safe-area-inset-left));
+    right: calc(16px + env(safe-area-inset-right));
     bottom: calc(16px + env(safe-area-inset-bottom));
   }
 }
