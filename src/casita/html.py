@@ -192,7 +192,7 @@ SEARCH_JS = """<script>
 
   function groupKey(c) {
     if (c.classList.contains('eliminated')) return 2;
-    if (c.classList.contains('voted-pass')) return 1;
+    if (c.classList.contains('voted-pass') || c.classList.contains('sev-filtered')) return 1;
     return 0;
   }
 
