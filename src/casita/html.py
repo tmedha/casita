@@ -130,8 +130,12 @@ SEARCH_JS = """<script>
   var countEl = document.getElementById('search-count');
   var chips = Array.from(document.querySelectorAll('.since-chip'));
   var dateInput = document.getElementById('since-date');
+  var sortChips = Array.from(document.querySelectorAll('.sort-chip'));
+  var grid = document.querySelector('main.grid');
+  var featureCard = document.querySelector('.card.feature');
   if (!input) return;
   var cards = Array.from(document.querySelectorAll('.card'));
+  cards.forEach(function(c, i) { c._defaultIndex = i; });
 
   // sinceCutoff is a YYYY-MM-DD string ('' = any time). A card shows when it
   // matches the text query AND its data-added date is >= the cutoff. Date
@@ -142,6 +146,7 @@ SEARCH_JS = """<script>
   // the chip highlight stable across repaints / midnight rollover.
   var sinceCutoff = '';
   var activeDays = '';
+  var sortMode = '';  // '' = best match, 'asc'/'desc' = price
   var DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;
 
   function daysAgoISO(n) {
@@ -154,6 +159,7 @@ SEARCH_JS = """<script>
     var parts = [];
     if (q) parts.push('q=' + encodeURIComponent(q));
     if (sinceCutoff) parts.push('since=' + sinceCutoff);
+    if (sortMode) parts.push('sort=' + sortMode);
     var hash = parts.length ? '#' + parts.join('&') : '';
     if (location.hash !== hash) {
       history.replaceState(null, '', location.pathname + location.search + hash);
@@ -178,6 +184,30 @@ SEARCH_JS = """<script>
     syncHash(q);
   }
 
+  function groupKey(c) {
+    if (c.classList.contains('eliminated')) return 2;
+    if (c.classList.contains('voted-pass')) return 1;
+    return 0;
+  }
+
+  function applySort() {
+    if (!grid) return;
+    var sorted = cards.slice().sort(function(a, b) {
+      var ga = groupKey(a), gb = groupKey(b);
+      if (ga !== gb) return ga - gb;
+      if (!sortMode) return a._defaultIndex - b._defaultIndex;
+      var pa = parseInt(a.dataset.price, 10);
+      var pb = parseInt(b.dataset.price, 10);
+      var aEmpty = isNaN(pa), bEmpty = isNaN(pb);
+      if (aEmpty && bEmpty) return a._defaultIndex - b._defaultIndex;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      return sortMode === 'asc' ? pa - pb : pb - pa;
+    });
+    sorted.forEach(function(c) { grid.appendChild(c); });
+    if (featureCard) featureCard.classList.toggle('feature', !sortMode);
+  }
+
   // Reflect the active cutoff in the chip / date-input pressed states, driven
   // by activeDays (not by re-deriving the date — see note above).
   function paintControls() {
@@ -190,6 +220,9 @@ SEARCH_JS = """<script>
       if (custom) dateInput.value = sinceCutoff;
       else if (!sinceCutoff) dateInput.value = '';
     }
+    sortChips.forEach(function(ch) {
+      ch.setAttribute('aria-pressed', ch.dataset.sort === sortMode ? 'true' : 'false');
+    });
   }
 
   chips.forEach(function(ch) {
@@ -209,10 +242,18 @@ SEARCH_JS = """<script>
       apply();
     });
   }
+  sortChips.forEach(function(ch) {
+    ch.addEventListener('click', function() {
+      sortMode = ch.dataset.sort;
+      paintControls();
+      applySort();
+      syncHash((input.value || '').trim().toLowerCase());
+    });
+  });
 
   input.addEventListener('input', apply);
 
-  // Restore both filters from the URL hash on load (#q=...&since=YYYY-MM-DD).
+  // Restore filters from the URL hash on load (#q=...&since=YYYY-MM-DD&sort=asc).
   var raw = location.hash.replace(/^#/, '');
   raw.split('&').forEach(function(pair) {
     var kv = pair.split('=');
@@ -220,6 +261,10 @@ SEARCH_JS = """<script>
     if (kv[0] === 'since' && kv[1]) {
       var v = decodeURIComponent(kv[1]);
       if (DATE_RE.test(v)) sinceCutoff = v;  // ignore malformed cutoffs
+    }
+    if (kv[0] === 'sort' && kv[1]) {
+      var s = decodeURIComponent(kv[1]);
+      if (s === 'asc' || s === 'desc') sortMode = s;
     }
   });
   // A restored cutoff is treated as a custom date unless it matches a preset.
@@ -231,6 +276,7 @@ SEARCH_JS = """<script>
   }
   paintControls();
   apply();
+  applySort();
 })();
 </script>"""
 
