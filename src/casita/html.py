@@ -760,7 +760,7 @@ h1 {
 
 .scroll-top {
   position: fixed;
-  left: calc(24px + env(safe-area-inset-left));
+  right: calc(24px + env(safe-area-inset-right));
   bottom: calc(24px + env(safe-area-inset-bottom));
   z-index: 50;
   display: inline-flex; align-items: center; justify-content: center;
