@@ -128,8 +128,7 @@ SEARCH_JS = """<script>
 (function() {
   var input = document.getElementById('q');
   var countEl = document.getElementById('search-count');
-  var chips = Array.from(document.querySelectorAll('.since-chip'));
-  var dateInput = document.getElementById('since-date');
+  var sinceSelect = document.getElementById('since-select');
   var sortSelect = document.getElementById('sort-select');
   var bookmarkChip = document.getElementById('bookmark-filter');
   var grid = document.querySelector('main.grid');
@@ -138,18 +137,13 @@ SEARCH_JS = """<script>
   var cards = Array.from(document.querySelectorAll('.card'));
   cards.forEach(function(c, i) { c._defaultIndex = i; });
 
-  // sinceCutoff is a YYYY-MM-DD string ('' = any time). A card shows when it
-  // matches the text query AND its data-added date is >= the cutoff. Date
-  // strings compare lexically, so a plain string >= works for the cutoff.
-  // activeDays records which control owns the current cutoff: '' = the
-  // "Any time" chip, a preset string ('1'/'3'/'7') = that chip, or null = a
-  // custom date. Tracking it explicitly (vs re-deriving from the date) keeps
-  // the chip highlight stable across repaints / midnight rollover.
-  var sinceCutoff = '';
-  var activeDays = '';
+  // sinceDays is the Added dropdown's value ('' = any time, or '1'/'3'/'7').
+  // A card shows when it matches the text query AND its data-added date is
+  // >= today minus sinceDays. Date strings compare lexically, so a plain
+  // string >= works for the cutoff.
+  var sinceDays = '';
   var sortMode = '';  // '' = best match, 'asc'/'desc' = price
   var bookmarkOnly = false;
-  var DATE_RE = /^\\d{4}-\\d{2}-\\d{2}$/;
 
   function daysAgoISO(n) {
     var d = new Date();
@@ -157,10 +151,14 @@ SEARCH_JS = """<script>
     return d.toISOString().slice(0, 10);
   }
 
+  function sinceCutoff() {
+    return sinceDays ? daysAgoISO(parseInt(sinceDays, 10)) : '';
+  }
+
   function syncHash(q) {
     var parts = [];
     if (q) parts.push('q=' + encodeURIComponent(q));
-    if (sinceCutoff) parts.push('since=' + sinceCutoff);
+    if (sinceDays) parts.push('since=' + sinceDays);
     if (sortMode) parts.push('sort=' + sortMode);
     if (bookmarkOnly) parts.push('bookmarked=1');
     var hash = parts.length ? '#' + parts.join('&') : '';
@@ -173,13 +171,14 @@ SEARCH_JS = """<script>
     var q = (input.value || '').trim().toLowerCase();
     var tokens = q ? q.split(/\\s+/).filter(Boolean) : [];
     var bookmarks = JSON.parse(localStorage.getItem('casita_bookmarks_v1') || '{}');
+    var cutoff = sinceCutoff();
     var shown = 0;
     cards.forEach(function(c) {
       var hay = c.dataset.search || '';
       var textMatch = tokens.every(function(t) { return hay.indexOf(t) !== -1; });
       var added = c.dataset.added || '';
       // No cutoff → show all; with a cutoff, an unknown date is treated as old.
-      var dateMatch = !sinceCutoff || (added && added >= sinceCutoff);
+      var dateMatch = !cutoff || (added && added >= cutoff);
       var localBookmark = bookmarks[c.dataset.key];
       var isBookmarked = localBookmark === undefined ? c.dataset.bookmarked === 'true' : !!localBookmark;
       var bookmarkMatch = !bookmarkOnly || isBookmarked;
@@ -215,35 +214,15 @@ SEARCH_JS = """<script>
     if (featureCard) featureCard.classList.toggle('feature', !sortMode);
   }
 
-  // Reflect the active cutoff in the chip / date-input pressed states, driven
-  // by activeDays (not by re-deriving the date — see note above).
   function paintControls() {
-    chips.forEach(function(ch) {
-      ch.setAttribute('aria-pressed', (activeDays !== null && ch.dataset.days === activeDays) ? 'true' : 'false');
-    });
-    if (dateInput) {
-      var custom = activeDays === null && !!sinceCutoff;
-      dateInput.setAttribute('data-active', custom ? 'true' : 'false');
-      if (custom) dateInput.value = sinceCutoff;
-      else if (!sinceCutoff) dateInput.value = '';
-    }
+    if (sinceSelect) sinceSelect.value = sinceDays;
     if (sortSelect) sortSelect.value = sortMode;
     if (bookmarkChip) bookmarkChip.setAttribute('aria-pressed', bookmarkOnly ? 'true' : 'false');
   }
 
-  chips.forEach(function(ch) {
-    ch.addEventListener('click', function() {
-      activeDays = ch.dataset.days;  // '' for Any, or '1'/'3'/'7'
-      sinceCutoff = activeDays === '' ? '' : daysAgoISO(parseInt(activeDays, 10));
-      paintControls();
-      apply();
-    });
-  });
-  if (dateInput) {
-    dateInput.addEventListener('change', function() {
-      var v = dateInput.value || '';
-      sinceCutoff = DATE_RE.test(v) ? v : '';
-      activeDays = sinceCutoff ? null : '';  // custom date owns it, or fall back to Any
+  if (sinceSelect) {
+    sinceSelect.addEventListener('change', function() {
+      sinceDays = sinceSelect.value;
       paintControls();
       apply();
     });
@@ -310,7 +289,7 @@ SEARCH_JS = """<script>
     }
   }
 
-  // Restore filters from the URL hash on load (#q=...&since=YYYY-MM-DD&sort=asc).
+  // Restore filters from the URL hash on load (#q=...&since=1&sort=asc).
   // The back link carries no hash, so fall back to the state saved on exit.
   var nav = readNav();
   var raw = location.hash.replace(/^#/, '');
@@ -320,7 +299,7 @@ SEARCH_JS = """<script>
     if (kv[0] === 'q' && kv[1]) input.value = decodeURIComponent(kv[1].replace(/\\+/g, '%20'));
     if (kv[0] === 'since' && kv[1]) {
       var v = decodeURIComponent(kv[1]);
-      if (DATE_RE.test(v)) sinceCutoff = v;  // ignore malformed cutoffs
+      if (v === '1' || v === '3' || v === '7') sinceDays = v;
     }
     if (kv[0] === 'sort' && kv[1]) {
       var s = decodeURIComponent(kv[1]);
@@ -328,13 +307,6 @@ SEARCH_JS = """<script>
     }
     if (kv[0] === 'bookmarked' && kv[1] === '1') bookmarkOnly = true;
   });
-  // A restored cutoff is treated as a custom date unless it matches a preset.
-  if (sinceCutoff) {
-    activeDays = null;
-    chips.forEach(function(ch) {
-      if (ch.dataset.days && sinceCutoff === daysAgoISO(parseInt(ch.dataset.days, 10))) activeDays = ch.dataset.days;
-    });
-  }
   paintControls();
   apply();
   applySort();
@@ -823,11 +795,9 @@ h1 {
 .sort-select:hover { color: var(--ink); border-color: var(--ink-3); }
 .sort-select:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent-soft); }
 
-/* "Added since" filter — chip row + custom date, matches the search bar */
-.since-filter {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
-  margin-top: 12px;
-}
+/* Sort / Added dropdowns, stacked, plus the bookmark toggle chip */
+.filter-stack { display: flex; flex-direction: column; gap: 6px; }
+.filter-row { display: flex; align-items: center; gap: 8px; }
 .since-label {
   color: var(--ink-3); font-size: 11px; font-weight: 600;
   letter-spacing: 0.08em; text-transform: uppercase; margin-right: 2px;
@@ -840,16 +810,6 @@ h1 {
 }
 .since-chip:hover { color: var(--ink); border-color: var(--ink-3); }
 .since-chip[aria-pressed="true"] {
-  color: #fff; background: var(--accent); border-color: transparent;
-}
-.since-date {
-  font-family: inherit; font-size: 13px; color: var(--ink-2);
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: 999px; padding: 4px 11px; cursor: pointer;
-  color-scheme: light dark;
-}
-.since-date:focus-within, .since-date:hover { border-color: var(--ink-3); }
-.since-date[data-active="true"] {
   color: #fff; background: var(--accent); border-color: transparent;
 }
 .search-meta {
@@ -2076,23 +2036,30 @@ def render(
       </div>
       <div class="sort-group">
         <button type="button" id="bookmark-filter" class="since-chip" aria-pressed="false"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;">bookmark</span> Bookmarked</button>
-        <label class="since-label" for="sort-select">Sort</label>
-        <span class="sort-select-wrap">
-          <select id="sort-select" class="sort-select" aria-label="Sort listings">
-            <option value="">Best match</option>
-            <option value="asc">Price: low to high</option>
-            <option value="desc">Price: high to low</option>
-          </select>
-        </span>
+        <div class="filter-stack">
+          <div class="filter-row">
+            <label class="since-label" for="sort-select">Sort</label>
+            <span class="sort-select-wrap">
+              <select id="sort-select" class="sort-select" aria-label="Sort listings">
+                <option value="">Best match</option>
+                <option value="asc">Price: low to high</option>
+                <option value="desc">Price: high to low</option>
+              </select>
+            </span>
+          </div>
+          <div class="filter-row">
+            <label class="since-label" for="since-select">Added</label>
+            <span class="sort-select-wrap">
+              <select id="since-select" class="sort-select" aria-label="Filter by date added">
+                <option value="">Any time</option>
+                <option value="1">Last 24 hours</option>
+                <option value="3">Last 3 days</option>
+                <option value="7">Last 7 days</option>
+              </select>
+            </span>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="since-filter" role="group" aria-label="Filter by date added">
-      <span class="since-label">Added</span>
-      <button type="button" class="since-chip" data-days="" aria-pressed="true">Any time</button>
-      <button type="button" class="since-chip" data-days="1" aria-pressed="false">24h</button>
-      <button type="button" class="since-chip" data-days="3" aria-pressed="false">3 days</button>
-      <button type="button" class="since-chip" data-days="7" aria-pressed="false">7 days</button>
-      <input type="date" id="since-date" class="since-date" aria-label="Added on or after this date">
     </div>
     <div class="search-meta"><span id="search-count">{count}</span> of {count} shown · refreshed {ts}</div>
   </div>
