@@ -1610,7 +1610,7 @@ def _card(L: Listing, walk_map: dict | None = None, convo: dict | None = None,
         )
 
     return f"""
-<article class="card {sev_class}{elim_class}{feature_class}" data-search="{haystack}" data-added="{added_date}" data-key="{_esc(L.key)}">
+<article class="card {sev_class}{elim_class}{feature_class}" data-search="{haystack}" data-added="{added_date}" data-key="{_esc(L.key)}" data-price="{L.price or ''}">
   {elim_banner_html}
   <div class="feature-media">{img_html}</div>
   <a class="card-body-link" href="{detail_href}">
@@ -1813,6 +1813,12 @@ def render(
       <button type="button" class="since-chip" data-days="3" aria-pressed="false">3 days</button>
       <button type="button" class="since-chip" data-days="7" aria-pressed="false">7 days</button>
       <input type="date" id="since-date" class="since-date" aria-label="Added on or after this date">
+    </div>
+    <div class="sort-filter" role="group" aria-label="Sort listings">
+      <span class="sort-label">Sort</span>
+      <button type="button" class="sort-chip" data-sort="" aria-pressed="true">Best match</button>
+      <button type="button" class="sort-chip" data-sort="asc" aria-pressed="false">Price ↑</button>
+      <button type="button" class="sort-chip" data-sort="desc" aria-pressed="false">Price ↓</button>
     </div>
     <div class="search-meta"><span id="search-count">{count}</span> of {count} shown · refreshed {ts}</div>
   </div>
