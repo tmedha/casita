@@ -657,23 +657,23 @@ h1 {
   width: 100%; padding: 0;
 }
 .search-box input::placeholder { color: var(--ink-3); }
-/* "Added since" filter — chip row + custom date, matches the search bar */
-.since-filter {
+/* "Added since" filter and Sort — chip rows, share the search bar's look */
+.since-filter, .sort-filter {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
   margin-top: 12px;
 }
-.since-label {
+.since-label, .sort-label {
   color: var(--ink-3); font-size: 11px; font-weight: 600;
   letter-spacing: 0.08em; text-transform: uppercase; margin-right: 2px;
 }
-.since-chip {
+.since-chip, .sort-chip {
   font-family: inherit; font-size: 13px; font-weight: 500;
   color: var(--ink-2); background: var(--card); cursor: pointer;
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 13px;
   transition: color .12s, background .12s, border-color .12s;
 }
-.since-chip:hover { color: var(--ink); border-color: var(--ink-3); }
-.since-chip[aria-pressed="true"] {
+.since-chip:hover, .sort-chip:hover { color: var(--ink); border-color: var(--ink-3); }
+.since-chip[aria-pressed="true"], .sort-chip[aria-pressed="true"] {
   color: #fff; background: var(--accent); border-color: transparent;
 }
 .since-date {
