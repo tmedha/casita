@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS votes (
 
 CREATE INDEX IF NOT EXISTS idx_votes_listing ON votes (listing_key, ts);
 
+-- Saved-for-later flag. Distinct from votes (opinion signal) and
+-- listing_status (funnel state) — presence of a row means bookmarked.
+CREATE TABLE IF NOT EXISTS bookmarks (
+  listing_key TEXT NOT NULL,
+  voter TEXT NOT NULL,           -- reviewer label
+  ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (listing_key, voter)
+);
+
 -- URLs pasted into another workflow that the local scraper should pick up.
 -- If the cloud side cannot fetch a source itself, the 'casita add' verb queues
 -- the URL for the next local scrape.
@@ -495,6 +504,10 @@ def status_for(conn: sqlite3.Connection, listing_key: str) -> sqlite3.Row | None
     return conn.execute(
         "SELECT * FROM listing_status WHERE listing_key=?", (listing_key,)
     ).fetchone()
+
+
+def bookmarked_keys(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT DISTINCT listing_key FROM bookmarks")}
 
 
 def set_status(
