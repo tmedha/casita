@@ -96,6 +96,23 @@ def test_index_open_graph_urls_are_escaped(monkeypatch):
     assert 'content="https://example.test/&quot;bad/og/index.png"' in rendered
 
 
+def test_every_card_carries_data_key_for_scroll_restore(monkeypatch):
+    # Returning from a detail page re-anchors scroll by data-key; a card
+    # without one silently falls back to a raw pixel offset.
+    listings = [
+        Listing(source="manual", source_id=str(i), url="", price=1000 + i,
+                beds=1, baths=1, dog_policy="dogs_ok", llm_severity="ok")
+        for i in range(3)
+    ]
+
+    rendered = html.render(listings)
+
+    # "data-key=" also appears in the restore script's selector, so count cards.
+    assert rendered.count("<article class=") == len(listings)
+    for L in listings:
+        assert f'data-key="{L.key}"' in rendered
+
+
 def test_demo_clean_url_path_resolves_listing_html(tmp_path):
     listing = tmp_path / "listing" / "sample-listing.html"
     listing.parent.mkdir()
