@@ -21,15 +21,18 @@ candidate chooses to improve.
 
 2) **Bookmark for entries:** I added a bookmark button on the listing cards for users to save listings that they like for them to peruse later. I also added a "Bookmarked" button, which when clicked, would show us only the bookmarked listings, and when unclicked, would show all listings. This way, I had to create no new page to do this action. Since the browser cannot access the SQL directly, I needed a real write path for the bookmarks. I saved the click state to local storage and added a new Bookmarks table in SQLite where they were stored. I added a test suite for this.
 
-3) **Sorting the listings:** When I immediately googled "cheap apartments in Bay Area" upon seeing the pricings on the demo listing, I got the idea to add "Sort" according to price on the website so that other users can also check according to their preferences and budget. The sorting was all client-side and I made no backend changes in it.
+3) **Sorting the listings:** When I immediately googled "cheap apartments in Bay Area" upon seeing the pricings on the demo listing, I got the idea to add "Sort" according to price on the website so that other users can also check according to their preferences and budget. The sorting was all client-side and I made no backend changes in it. 
 
 4) **Fix automatic scroll-up:** I noticed that when we click "Back to All Listings" after clicking on a listing card and seeing its details, the page jumps back up to the top. If this persists, then every time a user will click out of a listing, they would be thrown back to the top, which could make it a frustrating experience for them to browse. Now, even if we click "Back to All Listings", we stay at the same level where user had clicked the listing from.
 
 ### Addition in Functionality (that would work on the scraped data):
 
-1) **Added Price-History:** The demo right now is a convenient and better way to view very personalized and specific listings from different websites like Zillow and Craigslist in one place, but I wanted to add one more feature that would elevate it from Zillow. I added a feature that would display how long ago the listing was published and how much its price has fallen since then. This feature would help users get a better idea of how the property that they are viewing is doing, and they will be able to make better decisions. I added tests for this.
+1) **Added Price-History:** The demo right now is a convenient and better way to view very personalized and specific listings from different websites like Zillow and Craigslist in one place, but I wanted to add one more feature that would elevate it from Zillow. I added a feature that would display how long ago the listing was published and how much its price has fallen since then. This feature would help users get a better idea of how the property that they are viewing is doing, and they will be able to make better decisions. I added tests for this. I also moved the "Added" filter to make the UI look less cluttered.
 
 We cannot really view the price-change in the demo because the data is static, so I seeded the tables with test data to confirm that it works. How long it has been since the listing was uploaded still shows with static data. If you want to view everything with the original sqlite file, you can use it, but price history won't be visible. If you use the same sqlite file that I have in my project as is, you will see my price history feature as well, which will work with scraped data.
+
+### Scope:
+If given more time, I would like to make sure that my features sit even more harmoniously on the web page.
 
 ## Demo
 
