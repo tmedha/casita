@@ -1079,7 +1079,7 @@ h1 {
   padding: 3px 8px; border-radius: 999px;
 }
 .price-change.is-drop { color: var(--accent); background: var(--accent-soft); }
-.price-change.is-rise { color: var(--ink-3); background: var(--card-2); }
+.price-change.is-rise { color: var(--warn); background: var(--warn-soft); }
 .card-address {
   font-size: 14px; color: var(--ink); line-height: 1.4; font-weight: 500;
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
@@ -1676,8 +1676,8 @@ STALE_AFTER_DAYS = 21
 def price_change_html(change) -> str:
     """`↓ $250` pill from a price_history row, or "" when there's no change.
 
-    A cut is good news for us (green); a raise is worth noticing, not alarming
-    (muted). Row may be a sqlite3.Row or any mapping with price/prev_price.
+    A cut is good news for us (green); a raise is worth flagging (red). Row may
+    be a sqlite3.Row or any mapping with price/prev_price.
     """
     if not change:
         return ""
