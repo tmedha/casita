@@ -130,7 +130,7 @@ SEARCH_JS = """<script>
   var countEl = document.getElementById('search-count');
   var chips = Array.from(document.querySelectorAll('.since-chip'));
   var dateInput = document.getElementById('since-date');
-  var sortChips = Array.from(document.querySelectorAll('.sort-chip'));
+  var sortSelect = document.getElementById('sort-select');
   var grid = document.querySelector('main.grid');
   var featureCard = document.querySelector('.card.feature');
   if (!input) return;
@@ -220,9 +220,7 @@ SEARCH_JS = """<script>
       if (custom) dateInput.value = sinceCutoff;
       else if (!sinceCutoff) dateInput.value = '';
     }
-    sortChips.forEach(function(ch) {
-      ch.setAttribute('aria-pressed', ch.dataset.sort === sortMode ? 'true' : 'false');
-    });
+    if (sortSelect) sortSelect.value = sortMode;
   }
 
   chips.forEach(function(ch) {
@@ -242,14 +240,14 @@ SEARCH_JS = """<script>
       apply();
     });
   }
-  sortChips.forEach(function(ch) {
-    ch.addEventListener('click', function() {
-      sortMode = ch.dataset.sort;
+  if (sortSelect) {
+    sortSelect.addEventListener('change', function() {
+      sortMode = sortSelect.value;
       paintControls();
       applySort();
       syncHash((input.value || '').trim().toLowerCase());
     });
-  });
+  }
 
   input.addEventListener('input', apply);
 
@@ -685,6 +683,11 @@ h1 {
 .toolbar { margin-top: 26px; }
 @media (max-width: 600px) { .toolbar { margin-top: 20px; } }
 
+.toolbar-row {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+
 .search-box {
   display: flex; align-items: center; gap: 10px;
   background: var(--card);
@@ -703,23 +706,34 @@ h1 {
   width: 100%; padding: 0;
 }
 .search-box input::placeholder { color: var(--ink-3); }
-/* "Added since" filter and Sort — chip rows, share the search bar's look */
-.since-filter, .sort-filter {
+
+.sort-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sort-select {
+  font-family: inherit; font-size: 13px; color: var(--ink-2);
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px 13px; cursor: pointer;
+  color-scheme: light dark;
+}
+.sort-select:hover { border-color: var(--ink-3); }
+.sort-select:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent-soft); }
+
+/* "Added since" filter — chip row + custom date, matches the search bar */
+.since-filter {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
   margin-top: 12px;
 }
-.since-label, .sort-label {
+.since-label {
   color: var(--ink-3); font-size: 11px; font-weight: 600;
   letter-spacing: 0.08em; text-transform: uppercase; margin-right: 2px;
 }
-.since-chip, .sort-chip {
+.since-chip {
   font-family: inherit; font-size: 13px; font-weight: 500;
   color: var(--ink-2); background: var(--card); cursor: pointer;
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 13px;
   transition: color .12s, background .12s, border-color .12s;
 }
-.since-chip:hover, .sort-chip:hover { color: var(--ink); border-color: var(--ink-3); }
-.since-chip[aria-pressed="true"], .sort-chip[aria-pressed="true"] {
+.since-chip:hover { color: var(--ink); border-color: var(--ink-3); }
+.since-chip[aria-pressed="true"] {
   color: #fff; background: var(--accent); border-color: transparent;
 }
 .since-date {
@@ -1848,9 +1862,19 @@ def render(
   <p class="lede">A rental-search snapshot for a household with two large dogs: SF walkability, Marin drive times, trail access, and good bread nearby.</p>
   {stats_html}
   <div class="toolbar">
-    <div class="search-box">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input id="q" type="search" placeholder="Search hood, price, beds, “garage”, “Inner Richmond”…" autocomplete="off">
+    <div class="toolbar-row">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="q" type="search" placeholder="Search hood, price, beds, “garage”, “Inner Richmond”…" autocomplete="off">
+      </div>
+      <div class="sort-group">
+        <label class="since-label" for="sort-select">Sort</label>
+        <select id="sort-select" class="sort-select" aria-label="Sort listings">
+          <option value="">Best match</option>
+          <option value="asc">Price: low to high</option>
+          <option value="desc">Price: high to low</option>
+        </select>
+      </div>
     </div>
     <div class="since-filter" role="group" aria-label="Filter by date added">
       <span class="since-label">Added</span>
@@ -1859,12 +1883,6 @@ def render(
       <button type="button" class="since-chip" data-days="3" aria-pressed="false">3 days</button>
       <button type="button" class="since-chip" data-days="7" aria-pressed="false">7 days</button>
       <input type="date" id="since-date" class="since-date" aria-label="Added on or after this date">
-    </div>
-    <div class="sort-filter" role="group" aria-label="Sort listings">
-      <span class="sort-label">Sort</span>
-      <button type="button" class="sort-chip" data-sort="" aria-pressed="true">Best match</button>
-      <button type="button" class="sort-chip" data-sort="asc" aria-pressed="false">Price ↑</button>
-      <button type="button" class="sort-chip" data-sort="desc" aria-pressed="false">Price ↓</button>
     </div>
     <div class="search-meta"><span id="search-count">{count}</span> of {count} shown · refreshed {ts}</div>
   </div>
