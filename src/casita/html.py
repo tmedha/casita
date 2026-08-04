@@ -801,13 +801,26 @@ h1 {
 .search-box input::placeholder { color: var(--ink-3); }
 
 .sort-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.sort-select {
-  font-family: inherit; font-size: 13px; color: var(--ink-2);
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: 999px; padding: 6px 13px; cursor: pointer;
-  color-scheme: light dark;
+/* Wrapper carries the chevron so it can inherit color and theme with the page. */
+.sort-select-wrap { position: relative; display: inline-flex; align-items: center; }
+.sort-select-wrap::after {
+  content: ""; position: absolute; right: 14px; pointer-events: none;
+  width: 6px; height: 6px; margin-top: -3px;
+  border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(45deg);
+  transition: border-color .12s;
 }
-.sort-select:hover { border-color: var(--ink-3); }
+.sort-select-wrap:hover::after { border-color: var(--ink); }
+.sort-select {
+  /* Without this the OS paints its own bevel and chevron over the pill. */
+  appearance: none; -webkit-appearance: none;
+  font-family: inherit; font-size: 13px; font-weight: 500; color: var(--ink-2);
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 32px 5px 13px; cursor: pointer;
+  color-scheme: light dark;
+  transition: color .12s, border-color .12s;
+}
+.sort-select:hover { color: var(--ink); border-color: var(--ink-3); }
 .sort-select:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent-soft); }
 
 /* "Added since" filter — chip row + custom date, matches the search bar */
@@ -2064,11 +2077,13 @@ def render(
       <div class="sort-group">
         <button type="button" id="bookmark-filter" class="since-chip" aria-pressed="false"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;">bookmark</span> Bookmarked</button>
         <label class="since-label" for="sort-select">Sort</label>
-        <select id="sort-select" class="sort-select" aria-label="Sort listings">
-          <option value="">Best match</option>
-          <option value="asc">Price: low to high</option>
-          <option value="desc">Price: high to low</option>
-        </select>
+        <span class="sort-select-wrap">
+          <select id="sort-select" class="sort-select" aria-label="Sort listings">
+            <option value="">Best match</option>
+            <option value="asc">Price: low to high</option>
+            <option value="desc">Price: high to low</option>
+          </select>
+        </span>
       </div>
     </div>
     <div class="since-filter" role="group" aria-label="Filter by date added">
